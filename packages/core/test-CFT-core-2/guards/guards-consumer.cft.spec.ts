@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+﻿import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { of } from 'rxjs';
-import { GuardsConsumer } from '../../packages/core/guards/guards-consumer';
+import { GuardsConsumer } from '../../guards/guards-consumer.js';
 
 const randInt = () => Math.floor(Math.random() * 900) + 50;
 

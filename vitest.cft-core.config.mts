@@ -7,7 +7,7 @@ export default defineConfig({
   ...b,
   test: {
     ...b.test,
-    include: ['test-CFT-core-2/**/*.spec.ts'],
+    include: ['packages/core/test-CFT-core-2/**/*.cft.spec.ts'],
     coverage: {
       ...b.test.coverage,
       reporter: ['text', 'html', 'json-summary'],
