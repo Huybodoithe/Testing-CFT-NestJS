@@ -53,3 +53,11 @@ build/config\.gypi
 .npmrc
 pnpm-lock.yaml
 /.history
+
+# Local environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Generated CFT coverage report
+/test-cft-project/coverage-report/
