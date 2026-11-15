@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { callModuleInitHook } from '../../hooks/on-module-init.hook';
-import { getInstancesGroupedByHierarchyLevel } from '../../hooks/utils/get-instances-grouped-by-hierarchy-level';
-import { getSortedHierarchyLevels } from '../../hooks/utils/get-sorted-hierarchy-levels';
+import { callModuleInitHook } from '../../hooks/on-module-init.hook.js';
+import { getInstancesGroupedByHierarchyLevel } from '../../hooks/utils/get-instances-grouped-by-hierarchy-level.js';
+import { getSortedHierarchyLevels } from '../../hooks/utils/get-sorted-hierarchy-levels.js';
 
 vi.mock('../../hooks/utils/get-instances-grouped-by-hierarchy-level', () => ({
   getInstancesGroupedByHierarchyLevel: vi.fn(),
