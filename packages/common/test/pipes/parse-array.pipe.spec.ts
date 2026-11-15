@@ -450,10 +450,12 @@ describe('ParseArrayPipe', () => {
             error = await pipe
               .transform(','.repeat(99), {} as ArgumentMetadata)
               .catch(err => err);
-            copied = concat.mock.contexts.reduce(
-              (total: number, array: unknown[]) => total + array.length,
-              0,
-            );
+            copied = concat.mock.contexts.reduce<number>((total, context) => {
+              if (!Array.isArray(context)) {
+                throw new TypeError('Expected concat context to be an array');
+              }
+              return total + context.length;
+            }, 0);
           } finally {
             concat.mockRestore();
           }

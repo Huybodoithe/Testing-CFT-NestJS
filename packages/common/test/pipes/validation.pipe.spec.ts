@@ -12,9 +12,13 @@ import {
   ValidatorConstraint,
 } from 'class-validator';
 import { HttpStatus } from '../../enums/index.js';
-import { UnprocessableEntityException } from '../../exceptions/index.js';
+import {
+  HttpException,
+  UnprocessableEntityException,
+} from '../../exceptions/index.js';
 import { ArgumentMetadata } from '../../interfaces/index.js';
 import { ValidationError } from '../../interfaces/external/validation-error.interface.js';
+import { Type as Constructor } from '../../interfaces/type.interface.js';
 import { ValidationPipe } from '../../pipes/validation.pipe.js';
 
 @Exclude()
@@ -52,6 +56,36 @@ class TestModelNoValidation {
   public prop1: string;
   public prop2: string;
   public optionalProp: string;
+}
+
+function getExceptionResponse(exception: unknown): Record<string, unknown> {
+  if (!(exception instanceof HttpException)) {
+    throw exception;
+  }
+
+  const response = exception.getResponse();
+  if (
+    typeof response !== 'object' ||
+    response === null ||
+    !('message' in response)
+  ) {
+    throw new TypeError(
+      'Expected the HTTP exception response to have a message',
+    );
+  }
+
+  return response as Record<string, unknown>;
+}
+
+function getExceptionMessageArray(exception: unknown): string[] {
+  const message = getExceptionResponse(exception).message;
+  if (
+    !Array.isArray(message) ||
+    !message.every(item => typeof item === 'string')
+  ) {
+    throw new TypeError('Expected validation messages to be a string array');
+  }
+  return message;
 }
 
 describe('ValidationPipe', () => {
@@ -102,7 +136,7 @@ describe('ValidationPipe', () => {
         ],
       },
     ]);
-    expect(exception.getResponse().message).toEqual([
+    expect(getExceptionResponse(exception).message).toEqual([
       'parent is invalid',
       'parent.child is invalid',
       'parent.child.name must be a string',
@@ -110,7 +144,7 @@ describe('ValidationPipe', () => {
   });
 
   describe('when errors are nested', () => {
-    const nestedErrors = [
+    const nestedErrors: ValidationError[] = [
       {
         property: 'parent',
         constraints: { invalid: 'parent is invalid' },
@@ -147,7 +181,7 @@ describe('ValidationPipe', () => {
       const map = vi.spyOn(pipe as any, 'mapChildrenToValidationErrors');
 
       const exception = pipe.createExceptionFactory()(nestedErrors);
-      expect(exception.getResponse().message).toEqual(list);
+      expect(getExceptionResponse(exception).message).toEqual(list);
       expect(map).toHaveBeenCalledTimes(4);
       expect(new Set(map.mock.results.map(({ value }) => value)).size).toBe(1);
     });
@@ -156,7 +190,7 @@ describe('ValidationPipe', () => {
       const group = vi.spyOn(pipe as any, 'groupValidationErrors');
 
       const exception = pipe.createExceptionFactory()(nestedErrors);
-      expect(exception.getResponse().message).toEqual(grouped);
+      expect(getExceptionResponse(exception).message).toEqual(grouped);
       expect(group).toHaveBeenCalledTimes(3);
       expect(new Set(group.mock.results.map(({ value }) => value)).size).toBe(
         1,
@@ -181,20 +215,23 @@ describe('ValidationPipe', () => {
       }
 
       expect(
-        new CustomPipe().createExceptionFactory()(nestedErrors).getResponse()
-          .message,
+        getExceptionResponse(
+          new CustomPipe().createExceptionFactory()(nestedErrors),
+        ).message,
       ).toEqual(list);
       expect(
-        new CustomPipe({ errorFormat: 'grouped' })
-          .createExceptionFactory()(nestedErrors)
-          .getResponse().message,
+        getExceptionResponse(
+          new CustomPipe({ errorFormat: 'grouped' }).createExceptionFactory()(
+            nestedErrors,
+          ),
+        ).message,
       ).toEqual(grouped);
     });
   });
 
   describe('option: "maxErrorMessagesLength"', () => {
     const omitted = 'Further validation errors were omitted';
-    const errors = [
+    const errors: ValidationError[] = [
       { property: 'a', constraints: { isString: 'a must be a string' } },
       {
         property: 'b',
@@ -208,7 +245,7 @@ describe('ValidationPipe', () => {
     it('should leave out the messages past the limit and say so', () => {
       const pipe = new ValidationPipe({ maxErrorMessagesLength: 30 });
       expect(
-        pipe.createExceptionFactory()(errors).getResponse().message,
+        getExceptionResponse(pipe.createExceptionFactory()(errors)).message,
       ).toEqual(['a must be a string', 'b.c must be a string', omitted]);
     });
     it('should leave out the messages past the limit in "grouped" format', () => {
@@ -217,7 +254,7 @@ describe('ValidationPipe', () => {
         maxErrorMessagesLength: 30,
       });
       expect(
-        pipe.createExceptionFactory()(errors).getResponse().message,
+        getExceptionResponse(pipe.createExceptionFactory()(errors)).message,
       ).toEqual({
         a: ['a must be a string'],
         'b.c': ['c must be a string'],
@@ -245,13 +282,13 @@ describe('ValidationPipe', () => {
       const exception = pipe.createExceptionFactory()([
         { property: 'items', children },
       ]);
-      expect(exception.getResponse().message.at(-1)).toBe(omitted);
+      expect(getExceptionMessageArray(exception).at(-1)).toBe(omitted);
       expect(reads.length).toBeLessThan(10);
     });
     it('should keep every message when the limit is lifted', () => {
       const pipe = new ValidationPipe({ maxErrorMessagesLength: Infinity });
       expect(
-        pipe.createExceptionFactory()(errors).getResponse().message,
+        getExceptionResponse(pipe.createExceptionFactory()(errors)).message,
       ).toEqual([
         'a must be a string',
         'b.c must be a string',
@@ -273,9 +310,9 @@ describe('ValidationPipe', () => {
         error = { property: 'x', children: [error] };
       }
 
-      const message: string[] = new ValidationPipe()
-        .createExceptionFactory()([error])
-        .getResponse().message;
+      const message = getExceptionMessageArray(
+        new ValidationPipe().createExceptionFactory()([error]),
+      );
       const length = message.reduce((total, item) => total + item.length, 0);
       expect(message.at(-1)).toBe(omitted);
       expect(length).toBeGreaterThan(990_000);
@@ -284,7 +321,9 @@ describe('ValidationPipe', () => {
     it('should add the omission to a copy of the errors', () => {
       class CustomPipe extends ValidationPipe {
         protected flattenValidationErrors(validationErrors: ValidationError[]) {
-          return Object.freeze(super.flattenValidationErrors(validationErrors));
+          const errors = super.flattenValidationErrors(validationErrors);
+          Object.freeze(errors);
+          return errors;
         }
         protected groupValidationErrors(
           validationErrors: ValidationError[],
@@ -296,15 +335,23 @@ describe('ValidationPipe', () => {
         }
       }
 
+      const response = getExceptionResponse(
+        new CustomPipe({ maxErrorMessagesLength: 30 }).createExceptionFactory()(
+          errors,
+        ),
+      );
+      expect(response.message).toEqual([
+        'a must be a string',
+        'b.c must be a string',
+        omitted,
+      ]);
       expect(
-        new CustomPipe({ maxErrorMessagesLength: 30 })
-          .createExceptionFactory()(errors)
-          .getResponse().message,
-      ).toEqual(['a must be a string', 'b.c must be a string', omitted]);
-      expect(
-        new CustomPipe({ errorFormat: 'grouped', maxErrorMessagesLength: 30 })
-          .createExceptionFactory()(errors)
-          .getResponse().message,
+        getExceptionResponse(
+          new CustomPipe({
+            errorFormat: 'grouped',
+            maxErrorMessagesLength: 30,
+          }).createExceptionFactory()(errors),
+        ).message,
       ).toEqual({
         a: ['a must be a string'],
         'b.c': ['c must be a string'],
@@ -915,7 +962,8 @@ describe('ValidationPipe', () => {
         it('should not throw an error for an object', async () => {
           target = new ValidationPipe({
             transformerPackage: {
-              plainToInstance: (_metatype, plain) => ({ ...(plain as object) }),
+              plainToInstance: <T>(_metatype: Constructor<T>, plain: unknown) =>
+                ({ ...(plain as object) }) as T,
               classToPlain: object => object as object,
             },
           });
@@ -932,7 +980,7 @@ describe('ValidationPipe', () => {
             type: 'query',
             metatype: Role,
             data: 'role',
-          } as ArgumentMetadata;
+          } as unknown as ArgumentMetadata;
 
           expect(await target.transform('admin', enumMetadata)).toBe('admin');
           expect(

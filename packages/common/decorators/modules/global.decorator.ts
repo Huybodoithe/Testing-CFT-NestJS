@@ -13,6 +13,14 @@ import { GLOBAL_MODULE_METADATA } from '../../constants.js';
  */
 export function Global(): ClassDecorator {
   return (target: Function) => {
-    Reflect.defineMetadata(GLOBAL_MODULE_METADATA, true, target);
+    (
+      Reflect as typeof Reflect & {
+        defineMetadata: (
+          metadataKey: string | symbol,
+          metadataValue: unknown,
+          target: object,
+        ) => void;
+      }
+    ).defineMetadata(GLOBAL_MODULE_METADATA, true, target);
   };
 }
